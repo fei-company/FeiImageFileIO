@@ -35,11 +35,12 @@ import struct
 
 class FeiImageFile:
     # note: mirrorY for MRC is automatically determined so overridden...
-    def __init__(self, filename, accessatr, writeFeiExtHeader=False, useMemMap=False, mirrorY=False):
+    def __init__(self, filename, accessatr, writeFeiExtHeader=False, useMemMap=True, mirrorY=False):
         fileext = getFileExtension(filename)
         if (fileext == 'ser'):
             self.__filetype = 'ser'
             self.__datafilename = filename
+	    useMemMap = False
         elif (fileext == 'hed' or fileext == 'img'):
             self.__filetype = 'imagic'
             self.__datafilename = filename[:-4]+'.img'
@@ -410,12 +411,15 @@ def read_ser_header(filehandle):
     if seriesVersion == 0x210:
         dataOffsetArray = struct.unpack(totalNumberElements * 'I', filehandle.read(4 * totalNumberElements))
     else:
-        dataOffsetArray = struct.unpack(totalNumberElements * 'Q', filehandle.read(8 * totalNumberElements))       
-    strides = unique(diff(dataOffsetArray))
-    if len(strides) > 1:
-        raise ValueError('Only contiguously stored data supported for SER files')
-    elif len(strides) < 1:
-		strides = unique(dataOffsetArray)
+        dataOffsetArray = struct.unpack(totalNumberElements * 'Q', filehandle.read(8 * totalNumberElements))  
+
+    strides = diff(dataOffsetArray)
+    validNumberElements = len(numpy.where(diff(dataOffsetArray)==strides[0])[0])
+    #strides = unique(diff(dataOffsetArray))
+    #if len(strides) > 1:
+    #    raise ValueError('Only contiguously stored data supported for SER files')
+    #elif len(strides) < 1:
+    #	strides = unique(dataOffsetArray)
 
     dataOffset = dataOffsetArray[0]
     filehandle.seek(dataOffset + 40)
