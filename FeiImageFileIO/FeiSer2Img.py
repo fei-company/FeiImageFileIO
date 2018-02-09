@@ -151,7 +151,7 @@ def alignFrames(img):
         # print i, cx, cy
     return img_align
 
-def processSer(img, gain=2.0):
+def processSer(img, gain=1.0):
     nz, ny, nx = img.shape
     # low-pass filter
     # img_lp = np.empty([nz, ny, nx])
@@ -159,22 +159,12 @@ def processSer(img, gain=2.0):
     #    img_lp[i] = gaussian_filter(img[i].astype('float'), sigma)
 
     # add bias to get rid of negative values
-    ind = np.where(img < 0)
-    if len(ind[0]) > 1000:
-        mm0 = img[ind].mean() - 5 * img[ind].std()
-        print '\tApplying pixel value offset to all images of %.2f' % -mm0
-        img_lp = img - mm0
-    else:
-        img_lp = img - img.min()
-
-    # substitute the extreme numbers to random noise
-    for i in range(nz):
-        ind = np.where(img_lp[i] < 0)
-        img_lp[i][ind] = np.random.random_sample((len(ind[0]),)) * 5
+    img_lp = img - img.min()
 
     # gain
-    img_lp = img_lp * gain
-    print '\tScaling all images by  %.2f' % gain
+    if gain <> 1.0:
+        img_lp = img_lp * gain
+        print '\tScaling all images by  %.2f' % gain
 
     return img_lp
 
@@ -226,7 +216,7 @@ def printHelp():
     sys.stdout.write('-c, --camera \t<camera length (m)>\n')
     sys.stdout.write('-a,--osc \t<rotation angle per frame (deg)>\n')
     sys.stdout.write('-s, --sigma \t<sigma of Gaussian filter> (default 2.0)\n')
-    sys.stdout.write('-g, --gain \t<multiply the data by the provided gain> (default 2.0)\n')
+    sys.stdout.write('-g, --gain \t<multiply the data by the provided gain> (default 1.0)\n')
     # print '-m, --mode \t '
     sys.stdout.write('-b, --bias_correction\t (Optional processing) Bias correction, sometimes the bias drifted during the ')
     sys.stdout.write('exposure and you observe strips in the image, this may help\n')
@@ -246,7 +236,7 @@ def getFilenames(argv):
     cameraLength = -1
     osc_range = -1
     sigma = 2.0
-    gain = 2.0
+    gain = 1.0
     opt_flags=[False,False,False]
 
     try:
