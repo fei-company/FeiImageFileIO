@@ -1,4 +1,4 @@
-#!/user/bin/python
+#!/usr/bin/python
 
 from __future__ import division
 import numpy as np
@@ -251,8 +251,7 @@ def saveImg(img, para, outfile, cxg, cyg):
 	pixelSize = 0.014
 	# saving
 	for k in range(nz):
-		header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cyg*pixelSize*para[k,0],cxg*pixelSize*para[k,0])
-		# header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n"%((nx-cxg)*pixelSize,cyg*pixelSize)
+		header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cxg*pixelSize*para[k,0],(ny-cyg)*pixelSize*para[k,0])
 		header += "BIN=%dx%d;\n" % (para[k,0], para[k,0])
 		header += "BYTE_ORDER=little_endian;\n"
 		header += "DATE=%s;\n" % (datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y"))
