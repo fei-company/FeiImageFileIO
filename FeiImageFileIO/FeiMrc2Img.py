@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/user/bin/python
 
 from __future__ import division
 import numpy as np
@@ -15,7 +15,7 @@ import glob
 
 def readMrc(infolder):
     # find mrc files
-    mrcList = sorted(glob.glob("{}*.mrc".format(infolder)))
+    mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
     nz = len(mrcList)
     # read input
     for k in range(nz):
@@ -34,7 +34,7 @@ def readMrc(infolder):
 
 def readTxt(infolder, use_stage_logging = False): 
     # find mrc files
-    txtList = sorted(glob.glob("{}*.txt".format(infolder)))
+    txtList = sorted(glob.glob("{}/*.txt".format(infolder)))
     nz = len(txtList)
     
     # read input
@@ -243,15 +243,16 @@ def saveImg(img, para, outfile, cxg, cyg):
 	nz, ny, nx = img.shape
 
 	# make a folder
-	outdir,filename=os.path.split(outfile)
-	if not os.path.exists(outdir):
-		os.makedirs(outdir)
+	#outdir,filename=os.path.split(outfile)
+	if not os.path.exists(outfile):
+		os.makedirs(outfile)
 
 	#parameters: [binning, cameralength, osc_range, osc_current, expTime, wavelength]
 	pixelSize = 0.014
 	# saving
 	for k in range(nz):
-		header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cxg*pixelSize*para[k,0],cyg*pixelSize*para[k,0])
+		header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cyg*pixelSize*para[k,0],cxg*pixelSize*para[k,0])
+		# header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n"%((nx-cxg)*pixelSize,cyg*pixelSize)
 		header += "BIN=%dx%d;\n" % (para[k,0], para[k,0])
 		header += "BYTE_ORDER=little_endian;\n"
 		header += "DATE=%s;\n" % (datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y"))
@@ -265,7 +266,7 @@ def saveImg(img, para, outfile, cxg, cyg):
 			header = "{\nHEADER_BYTES=512;\n"+header
 			header = "{:<512}".format(header)
 			# print k,header
-			with open("%s//%s_%03d.img" % (outdir, filename, k+1), 'wb') as f0:
+			with open("%s//Image_%03d.img" % (outfile, k+1), 'wb') as f0:
 				f0.write(header)
 				f0.write((img[k]+0.5).astype('uint16'))
 
@@ -280,7 +281,6 @@ def printHelp():
     sys.stdout.write('-s, --sigma \t<sigma of Gaussian filter> (default 2.0)\n')
     sys.stdout.write('-g, --gain \t<multiply the data by the provided gain> (default 1.0)\n')
     # print '-m, --mode \t '
-    sys.stdout.write('-u, --use_stage_logging\t Use stage logging, can be unreliable ')
     sys.stdout.write('-b, --bias_correction\t (Optional processing) Bias correction, sometimes the bias drifted during the ')
     sys.stdout.write('exposure and you observe strips in the image, this may help\n')
     sys.stdout.write('-d, --beam_centering\t (Optional processing) align the beam center, sometimes the beam center drifted during')
@@ -381,10 +381,10 @@ if __name__ == '__main__':
 		
 
 	# Take care of the negative values
-	if img.min() < 0:
+	if img_lp.min() < 0:
 		print 'Negative Values found:'
 		img_int16 = img_lp - img.min()
-		print '\tAdding all images by  %.2f' % -img.min()
+		print '\tAdding all images by  %.2f' % -img_lp.min()
 		# gain
 		if gain <> 1.0:
 			img_int16 = img_int16 * gain
@@ -397,7 +397,7 @@ if __name__ == '__main__':
 		print 'Finding Beam center: %.2f, %.2f' % (cx, cy)
 	#try:
 	print "Saving to %s###.img" % outfolder
-	saveImg(img, para, outfolder, cx, cy)
+	saveImg(img_int16, para, outfolder, cx, cy)
 	#except Exception:
 	#    print 'Saving', outfolder, 'failed'
 	#    sys.exit(1)
