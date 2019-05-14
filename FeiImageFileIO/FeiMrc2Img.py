@@ -1,305 +1,113 @@
 #!/usr/bin/python
 
 from __future__ import division
-import numpy as np
 from FeiImageFileIO import FeiImageFile
-from scipy.ndimage.filters import gaussian_filter
-from scipy.ndimage.measurements import center_of_mass
-from scipy.signal import correlate2d
 import sys
 import os
 import getopt
 import datetime
 import glob
+import struct
+from numpy import where, sqrt, average, clip, empty, diff, array
 
 
-def readMrc(infolder):
+ext_header_def = [
+    ('alphaTilt',         1, 'f'),  # 4-byte floating point   Alpha tilt, in degrees.
+    ('integrationTime',       1, 'f'),  # 4-byte floating point   Exposure time in seconds.
+    ('tilt_axis',      1, 'f'),  # 4-byte floating point   The orientation of the tilt axis in the image in degrees. Vertical to the top is 0 [deg], the direction of positive rotation is anti-clockwise.
+    ('pixelSpacing',     1, 'f'),  # 4-byte floating point   The pixel size of the images in SI units (meters).
+    ('acceleratingVoltage', 1, 'f'),  # 4-byte floating point   Value of the high tension in SI units (volts).
+    ('cameraLength', 1, 'f'), #4-byte floating point The calibrated camera length
+    ('camera', 16, 'c'),
+    ('physicalPixel', 1, 'f' ),
+    ('dim', 1, 'i'),
+    ('binning', 1, 'i'),
+    ('wavelength', 1, 'f'),
+    ('noiseReduction',1,'?')
+]
+_sizeof_dtypes =  {
+    "i":4, "f":4, "d":8, "?":1,"s":16}
+ext_header_offset = {
+    'alphaTilt':(100,'d'),
+    'integrationTime': (419,'d'),
+    'tilt_axis':(140, 'd'),
+    'pixelSpacing':(156, 'd'),
+    'acceleratingVoltage':(84, 'd'),
+    'camera':(435, 's'),
+    'binning':(427, 'i'),
+    'noiseReduction':(467,'?')}
+
+def readMrc(infolder, use_metadata):
     # find mrc files
     mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
+
     nz = len(mrcList)
     # read input
     for k in range(nz):
         a = FeiImageFile(mrcList[k],'r')
+        
         if k==0:
             (n,ny,nx) = a.get_size()
-            img = np.empty([nz, ny, nx])
-
+            img = empty([nz, ny, nx])
+            meta = []
+		
         img[k] = a.read_image()
+        if use_metadata:
+			meta.append(read_ext_header(mrcList[k]))
         a.close()
     
     print "\tNumber of images:", nz
-    #for i in range(nz):
-    #     print i, img[i].mean(), img[i].std(),img[i].min(),img[i].max()
-    return img
+    return img,meta
 
-def readTxt(infolder, use_stage_logging = False): 
-    # find mrc files
-    txtList = sorted(glob.glob("{}/*.txt".format(infolder)))
-    nz = len(txtList)
+def read_ext_header(fileName):
+    ext_header = {}
+    with open(fileName,'rb') as a:
+        ext_header['dim'] = struct.unpack('i',a.read(4))[0]
+        for key, offset in ext_header_offset.iteritems():
+            a.seek(1024+offset[0])
+            if 's' not in offset[1] :
+                ext_header[key] = struct.unpack(offset[1],a.read(_sizeof_dtypes[offset[1]]))[0]
+            else:
+                ext_header[key] = ''.join(struct.unpack(offset[1]*_sizeof_dtypes[offset[1]], a.read(_sizeof_dtypes[offset[1]]))).rstrip('\x00')
+        if 'Ceta' in ext_header['camera']:
+            ext_header['binning'] = 4096/ext_header['dim']
+            ext_header['physicalPixel'] = 14e-6
+        if ext_header['acceleratingVoltage'] == 200e3:
+            ext_header['wavelength'] = 2.508e-12
+        elif ext_header['acceleratingVoltage'] == 300e3:
+            ext_header['wavelength'] = 1.97e-12
+        ext_header['cameraLength'] = (ext_header['physicalPixel']*ext_header['binning'])/(ext_header['pixelSpacing']*ext_header['wavelength'])
+        #print ext_header
     
-    # read input
-    paraList = np.zeros([nz,6])
-    tilt_before = 0
-    if use_stage_logging:
-        for k in range(nz):
-            with open(txtList[k],'r') as f:
-                for line in f.readlines():
-                    if 'CETA Binning' in line:
-                        paraList[k,0] = int(line.split(':')[-1])
-                        #binning = int(line.split(':')[-1])
-                    if 'Current Stage Tilt' in line:
-                        #osc_current = float(line.split(':')[-1])
-                        paraList[k,3] = float(line.split(':')[-1])
-                        paraList[k-1,2] = paraList[k,3] - tilt_before
-                        tilt_before = paraList[k,3]
-                    if 'AccelerationVoltage:200000,' in line:
-                        #wavelength = 0.02508
-                        paraList[k,5] = 0.02508
-                    elif 'AccelerationVoltage:300000,' in line:
-                        #wavelength = 0.0197
-                        paraList[k,5] = 0.0197
-                    if 'Cameralength' in line:
-                        #camera_length = float(line[:-3].split(':'))
-                        paraList[k,1] = float(line[:-3].split(':')[-1])*1000
-                    if 'Frame Time' in line:
-                        #expTime = float(line.split(':')[-1])
-                        paraList[k,4] = float(line.split(':')[-1])
-        paraList[nz-1,2] = paraList[nz-2,2] 
-    else:
-        for k in range(nz):
-            with open(txtList[k],'r') as f:
-                for line in f.readlines():
-                    if 'CETA Binning' in line:
-                        paraList[k,0] = int(line.split(':')[-1])
-                        #binning 
-                    if 'Tilt start angle' in line:
-                        #osc_current 
-                        osc_start = float(line.split(':')[-1])
-                    if 'Tilt Per Image' in line:
-                        #osc_range 
-                        paraList[k,2] = float(line.split(':')[-1])
-                    if 'AccelerationVoltage:200000,' in line:
-                        #wavelength 
-                        paraList[k,5] = 0.02508
-                    elif 'AccelerationVoltage:300000,' in line:
-                        #wavelength 
-                        paraList[k,5] = 0.0197
-                    if 'Cameralength' in line:
-                        #camera_length 
-                        paraList[k,1] = float(line[:-3].split(':')[-1])*1000
-                    if 'Frame Time' in line:
-                        #expTime 
-                        paraList[k,4] = float(line.split(':')[-1])
-                paraList[k,3] = osc_start+k*paraList[k,2] 
-    #for k in range(nz):
-    #    print txtList[k], paraList[k,3],paraList[k,2]
-    #print 'binning, cameralength, osc_range, osc_current, expTime, wavelength'
-    return paraList
-
-
-
-def darkCorrecion(img, direction='Y'):
-    nz, ny, nx = img.shape
-    img_dark = np.empty([nz,ny,nx])
-    # first check if bias is drifting
-    mm0 = []
-    for i in [0,nz-1]:
-        ind = np.where(img[i] < 0)
-        mm0.append(img[i][ind].mean())
-    #print mm0
-    mm_diff = abs(np.diff(mm0))
-    if mm_diff > 5:
-        print '\tDark Correction Enabled: Bias drifted %.2f, adding %.2f ~ %.2f to each ADC block'%(mm_diff,-mm0[0],-mm0[1])
-        dk = int(ny/32)
-        for i in range(nz):
-            for k in range(32):
-                if direction == 'X':
-                    img_32 = img[i][k*dk:k*dk+dk, :]
-                    ind = np.where(img_32 < 0)
-                    mm = img_32[ind].mean()
-                    img_dark[i][k * dk:k * dk + dk, :] = img[i][k*dk:k*dk+dk, :] - mm
-                elif direction == 'Y':
-                    img_32 = img[i][:, k*dk:k*dk+dk]
-                    ind = np.where(img_32 < 0)
-                    mm = img_32[ind].mean()
-                img_dark[i][:, k * dk:k * dk + dk] = img[i][:, k*dk:k*dk+dk] - mm
-    else:
-        print '\tBias drift is not detected, will not correct.'
-        img_dark = img
-    return img_dark
-
-
-def findBeamCenter_frame(img_mm, findCenterofMass=False):
-    ny,nx = img_mm.shape
-    img_mm = gaussian_filter(img_mm, 5.0)
-    dc = 128
-    patch = img_mm[int(-dc+ny/2):int(dc+ny/2),int(-dc+nx/2):int(dc+nx/2)]
-    ind = np.argmax(patch)
-    cy = int(0.5 * ind / dc)
-    cx = ind % (2 * dc)
-
-    if findCenterofMass:
-        dcc = 32
-        patch_center=patch[cy-dcc:cy+dcc,cx-dcc:cx+dcc]
-        (cyg,cxg)=center_of_mass(patch_center)
-        cxg = cxg+cx-dcc+int(-dc+nx/2)
-        cyg = cyg+cy-dcc+int(-dc+ny/2)
-    else:
-        cxg = cx+int(-dc+nx/2)
-        cyg = cy+int(-dc+ny/2)
-    return cxg, cyg
-
-
-def findBeamCenter(img,findCenterOfMass=True):
-    ## average all frames for beam center
-    img_mm = np.mean(img,0)
-    cxg, cyg = findBeamCenter_frame(img_mm, findCenterOfMass)
-
-
-    return cxg, cyg
-
-def register_translation(src_image, target_image,space="real"):
-    """
-    Copied and modified from skimage
-    """
-    # images must be the same shape
-    if src_image.shape != target_image.shape:
-        raise ValueError("Error: images must be same size for "
-                         "register_translation")
-
-    # only 2D data makes sense right now
-    if src_image.ndim != 2 and upsample_factor > 1:
-        raise NotImplementedError("Error: register_translation only supports "
-                                  "subpixel registration for 2D images")
-
-    # assume complex data is already in Fourier space
-    if space.lower() == 'fourier':
-        src_freq = src_image
-        target_freq = target_image
-    # real data needs to be fft'd.
-    elif space.lower() == 'real':
-        src_image = np.array(src_image, dtype=np.complex128, copy=False)
-        target_image = np.array(target_image, dtype=np.complex128, copy=False)
-        src_freq = np.fft.fftn(src_image)
-        target_freq = np.fft.fftn(target_image)
-    else:
-        raise ValueError("Error: register_translation only knows the \"real\" "
-                         "and \"fourier\" values for the ``space`` argument.")
-
-    # Whole-pixel shift - Compute cross-correlation by an IFFT
-    shape = src_freq.shape
-    image_product = src_freq * target_freq.conj()
-    cross_correlation = np.fft.ifftn(image_product)
-
-    # Locate maximum
-    maxima = np.unravel_index(np.argmax(np.abs(cross_correlation)),
-                              cross_correlation.shape)
-    midpoints = np.array([np.fix(axis_size / 2) for axis_size in shape])
-
-    shifts = np.array(maxima, dtype=np.float64)
-    shifts[shifts > midpoints] -= np.array(shape)[shifts > midpoints]
-
-    # If its only one row or column the shift along that dimension has no
-    # effect. We set to zero.
-    for dim in range(src_freq.ndim):
-        if shape[dim] == 1:
-            shifts[dim] = 0
-
-    return shifts
-
-
-def alignFrames(img):
-	nz, ny, nx = img.shape
-	img_align = np.empty([nz,ny,nx])
-	img_align[0] = img[0].copy()
-	dc = 64
-	
-	
-	#for k in range(nz):
-	#	print k,findBeamCenter_frame(img[k],True)
-
-	cx0, cy0 = findBeamCenter_frame(img[0],False)
-	sigma = 2.0
-	if ny == 4096:
-		sigma = 6.0
-	elif ny == 2048:
-		sigma = 3.0
-
-	img_ref = gaussian_filter(img[0,cy0-dc:cy0+dc+1,cx0-dc:cx0+dc+1], sigma)
-	shift_max=0
-	for k in range(1,nz):
-		img_patch = img[k,cy0-dc:cy0+dc+1,cx0-dc:cx0+dc+1]
-		shifts = register_translation(img_ref, img_patch, space='real')
-		if abs(shifts).max() > shift_max:
-			shift_max = abs(shifts).max()
-		img_align[k] = np.roll(img[k],shifts.astype('int'))
-		#cx, cy = findBeamCenter_frame(img_align[i], False)
-		#print i, cx, cy
-	print '\tMaximum center beam shift', shift_max,'pixel(s)'
-	return img_align
-
-
-def saveImg(img, para, outfile, cxg, cyg):
-	nz, ny, nx = img.shape
-
-	# make a folder
-	#outdir,filename=os.path.split(outfile)
-	if not os.path.exists(outfile):
-		os.makedirs(outfile)
-
-	#parameters: [binning, cameralength, osc_range, osc_current, expTime, wavelength]
-	pixelSize = 0.014
-	# saving
-	for k in range(nz):
-		header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cyg*pixelSize*para[k,0],cxg*pixelSize*para[k,0])
-		header += "BIN=%dx%d;\n" % (para[k,0], para[k,0])
-		header += "BYTE_ORDER=little_endian;\n"
-		header += "DATE=%s;\n" % (datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y"))
-		header += "DETECTOR_SN=unknown;\n"
-		header += "DIM=2;\nDISTANCE=%-.9g;\n" % (para[k,1])
-		header += "OSC_RANGE=%-.9g;\nOSC_START=%-.9g;\nPHI=%-.9g;\n" % (para[k,2], para[k,3], para[k,3])
-		header += "SIZE1=%d;\nSIZE2=%d;\n" % (nx,ny)
-		header += "PIXEL_SIZE=%-.9g;\nTIME=%-.9g;\nWAVELENGTH=%-.9g;\n" % (pixelSize*para[k,0],para[k,4],para[k,5])
-		header += "TWOTHETA=0;\nTYPE=unsigned_short;\n}\n"
-		if len(header)<492:
-			header = "{\nHEADER_BYTES=512;\n"+header
-			header = "{:<512}".format(header)
-			# print k,header
-			with open("%s//Image_%03d.img" % (outfile, k+1), 'wb') as f0:
-				f0.write(header)
-				f0.write((img[k]+0.5).astype('uint16'))
-
+    return ext_header
 
 def printHelp():
-    sys.stdout.write('FeiMrc2Img.py: convert .mrc (prototype format) to .img\n')
+    sys.stdout.write('FeiMrc2Img.py: convert .mrc to .img\n')
     sys.stdout.write('options:\n')
-    sys.stdout.write('-i, --input \t<inputFolder>\n')
-    sys.stdout.write('-o, --output \t<outputfile>\n')
-    sys.stdout.write('-x, --cx \t<center x(px)> (required for images with a beam stopper, optional for images without a beam stopper)\n')
-    sys.stdout.write('-y, --cy \t<center y(px)> (required for images with a beam stopper, optional for images without a beam stopper)\n')
-    sys.stdout.write('-s, --sigma \t<sigma of Gaussian filter> (default 2.0)\n')
-    sys.stdout.write('-g, --gain \t<multiply the data by the provided gain> (default 1.0)\n')
-    # print '-m, --mode \t '
-    sys.stdout.write('-b, --bias_correction\t (Optional processing) Bias correction, sometimes the bias drifted during the ')
-    sys.stdout.write('exposure and you observe strips in the image, this may help\n')
-    sys.stdout.write('-d, --beam_centering\t (Optional processing) align the beam center, sometimes the beam center drifted during')
-    sys.stdout.write(' the exposure, if it is not blocked by the beam stopper and not saturated, this simple routine can fix it\n')
-    sys.stdout.write('-l, --lowpass_filtering\t(Optional processing) low-pass filtering, ')
-    sys.stdout.write('may help in spots finding and indexing)\n')
+    sys.stdout.write('-i, --input \t<input folder> (required)\n')
+    sys.stdout.write('-o, --output \t<output file pattern> (required)\n')
+    sys.stdout.write('-x, --cx \t<center x(px)> (required)\n')
+    sys.stdout.write('-y, --cy \t<center y(px)> (required)\n')
+    sys.stdout.write('-k, --HT \t<voltage (kV)> (required if no FEI extended header)\n')
+    sys.stdout.write('-c, --camera \t<camera length (m)> (required if no FEI extended header)\n')
+    sys.stdout.write('-a, --osc \t<rotation angle per frame (deg)> (required if no FEI extended header)\n')
+    sys.stdout.write('-F, --FEI \t<Use FEI meta data>\n')
     sys.stdout.flush()
 
+#printHelp()
 
-def getFilenames(argv):
+def getUserInput(argv):
     inputfile = ''
     outputfile = ''
+    HT = 200
     cx = -1
     cy = -1
-    sigma = 2.0
-    gain = 1.0
-    opt_flags=[False,False,False,False]
+    cameraLength = -1
+    osc_range = -1
+    use_metadata = False
 
     try:
-        opts, args = getopt.getopt(argv,"hi:o:x:y:s:g:ubld",["help","input=","output=","cx=","cy=","sigma=","gain=","use_stage_logging","bias_correction","lowpass_filtering","beam_centering"])
+        opts, args = getopt.getopt(argv,"hi:o:x:y:k:c:a:F",["help","input=","output=","cx=","cy=","HT=","camera=","osc=","FEI"])
     except getopt.GetoptError:
         printHelp()
         sys.exit(2)
@@ -307,9 +115,10 @@ def getFilenames(argv):
         if opt in ('-h','--help'):
             printHelp()
             sys.exit()
-        elif opt in ("-i", "--input pattern"):
+        elif opt in ("-i", "--input"):
             inputfile = arg
-        elif opt in ("-o", "--output pattern"):
+            print inputfile
+        elif opt in ("-o", "--output"):
             outputfile = arg
         elif opt in ('-x', '--cx'):
             cx = float(arg)
@@ -317,22 +126,26 @@ def getFilenames(argv):
             cy = float(arg)
         elif opt in ('-k', '--HT'):
             HT = int(arg)
-        elif opt in ('-s', '--sigma='):
-            sigma = float(arg)
-        elif opt in ('-g', '--gain='):
+        elif opt in ('-c', '--camera'):
+            cameraLength = float(arg)
+        elif opt in ('-a', '--osc='):
+            osc_range = float(arg)
             gain = float(arg)
-        
-        elif opt in ('-b', '--bias_correction'):
-            opt_flags[0] = True
-        elif opt in ('-l', '--lowpass_filtering'):
-            opt_flags[2] = True
-        elif opt in ('-d', '--beam_centering'):
-            opt_flags[1] = True
-        elif opt in ('-u', '--use_stage_logging'):
-            opt_flags[3] = True
+        elif opt in ('-F', '--FEI'):
+            use_metadata = True
         else:
             print opt,'unrecognized option'
 
+    # check if mandatory values are valid
+    if not use_metadata:
+        if cameraLength < 0:
+            print 'Camera length missing'
+            printHelp()
+            sys.exit(1)
+        if osc_range < 0:
+            print 'rotation angle missing'
+            printHelp()
+            sys.exit(1)
     if inputfile == '':
         print 'Input file missing'
         printHelp()
@@ -341,62 +154,92 @@ def getFilenames(argv):
         print 'Output file missing'
         printHelp()
         sys.exit(1)
-    return inputfile, outputfile, cx, cy, sigma, gain, opt_flags
+    if cx < 0 or cy < 0:
+        print 'beam center missing, using the center of the image instead'
+    return inputfile, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata
+
+def saveImg(img, file_handler, cxg, cyg, osc_start,osc_range, expTime, pixelSize, binning, wavelength, cameraLength):
+
+    # saving
+	header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n" % (cyg*pixelSize,cxg*pixelSize)
+	# header = "BEAM_CENTER_X=%-.9g;\nBEAM_CENTER_Y=%-.9g;\n"%((nx-cxg)*pixelSize,cyg*pixelSize)
+	header += "BIN=%dx%d;\n" % (binning,binning)
+	header += "BYTE_ORDER=little_endian;\n"
+	header += "DATE=%s;\n" % (datetime.datetime.now().strftime("%a %b %d %H:%M:%S %Y"))
+	header += "DETECTOR_SN=unknown;\n"
+	header += "DIM=2;\nDISTANCE=%-.9g;\n" % (cameraLength*1000)
+	header += "OSC_RANGE=%-.9g;\nOSC_START=%-.9g;\nPHI=%-.9g;\n" % (osc_range, osc_start, osc_start)
+	header += "SIZE1=%d;\nSIZE2=%d;\n" % (nx,ny)
+	header += "PIXEL_SIZE=%-.9g;\nTIME=%-.9g;\nWAVELENGTH=%-.9g;\n" % (pixelSize,expTime,wavelength)
+	header += "TWOTHETA=0;\nTYPE=unsigned_short;\n}\n"
+	if len(header)<492:
+		header = "{\nHEADER_BYTES=512;\n"+header
+		header = "{:<512}".format(header)
+		# print k,header
+	#with open("%s//%s_%03d.img" % (outdir, filename, k+1), 'wb') as f0:
+	file_handler.write(header)
+	file_handler.write((img+0.5).astype('uint16'))
+	return
+	
+def most_common(lst):
+    return max(set(lst), key=lst.count)
 
 if __name__ == '__main__':
-	infolder, outfolder, cx, cy, sigma, gain, opt_flags = getFilenames(sys.argv[1:])
-
+	infolder, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata = getUserInput(sys.argv[1:])
+	
+	
 	try:
-		print "Input folder from prototype:", infolder
-		img = readMrc(infolder)
-		para = readTxt(infolder, opt_flags[3])
-		if len(img) <> len(para):
-			print "MetaData doesn't match the Data. "
-			sys.exit(1)
+		print "Input folder:", infolder
+		img,meta = readMrc(infolder, use_metadata)
 	except Exception:
 		print 'Reading', infolder, 'failed'
 		sys.exit(1)
-
-	# Dark correction
-	if opt_flags[0]:
-		print "Bias Correction"
-		img_dark = darkCorrecion(img,'X')
-	else:
-		img_dark = img
-
-	# Align the center
-	if opt_flags[1]:
-		print "Align beam center"
-		img_align = alignFrames(img_dark)
-	else:
-		img_align = img_dark
-		
-	# low_pass filter:
-	if opt_flags[2]:
-		print "Low-pass filter (Gaussian kernel, sigma=%.1f)" % sigma
-		img_lp = gaussian_filter(img_align, sigma)
-	else:
-		img_lp = img_align
 		
 
 	# Take care of the negative values
-	if img_lp.min() < 0:
-		print 'Negative Values found:'
-		img_int16 = img_lp - img.min()
-		print '\tAdding all images by  %.2f' % -img_lp.min()
-		# gain
-		if gain <> 1.0:
-			img_int16 = img_int16 * gain
-			print '\tScaling all images by  %.2f' % gain
-	else:
-		img_int16 = img_lp
+	dark_noise = img[where(img<0)]
+	mm = sqrt(average(dark_noise*dark_noise))
+	print '\tDark nosie sigma:',mm,
+	mm = mm * 5
+	print ', 5 sigma:',mm
+	clip(img+mm, 0, 8000, out=img)
+	
+	n, ny, nx = img.shape
 
 	if cx < 0 or cy < 0:
-		cx,cy = findBeamCenter(img_align)
-		print 'Finding Beam center: %.2f, %.2f' % (cx, cy)
-	#try:
-	print "Saving to %s###.img" % outfolder
-	saveImg(img_int16, para, outfolder, cx, cy)
+		cx = nx/2
+		cy = ny/2
+	nz, ny, nx = img.shape
+
+    # make a folder
+	outdir,filename=os.path.split(outputfile)
+	if not os.path.exists(outdir):
+		os.makedirs(outdir)
+	
+	print "Saving to %s###.img" % outputfile
+	if not use_metadata:
+		binning = 4096/nx
+		pixelSize = 0.014*binning
+		wavelength = 0.02508   #0.0197
+		if HT == 300:
+			wavelength = 0.0197
+		osc_start = 0
+		expTime = 1.0
+	else:
+		binning = meta[0]['binning']
+		pixelSize = meta[0]['physicalPixel']*1e3*binning
+		wavelength = meta[0]['wavelength']*1e10
+		osc_start = round(meta[0]['alphaTilt'],1)
+		osc_range = []
+		for m in meta:
+			osc_range.append(round(m['alphaTilt'],1))
+		osc_range = most_common(list(diff(array(osc_range))))
+		expTime = meta[0]['integrationTime']
+		cameraLength = meta[0]['cameraLength']
+	for k in range(n):
+		with open("%s//%s%03d.img" % (outdir, filename, k+1), 'wb') as f0:
+			saveImg(img[k], f0, cx, cy, osc_start+k*osc_range, osc_range, expTime, pixelSize, binning, wavelength, cameraLength)
+			
 	#except Exception:
 	#    print 'Saving', outfolder, 'failed'
 	#    sys.exit(1)
