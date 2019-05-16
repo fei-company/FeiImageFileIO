@@ -37,6 +37,14 @@ ext_header_offset = {
     'binning':(427, 'i'),
     'noiseReduction':(467,'?')}
 
+def cal_wavelength(V0):
+    h=6.626e-34 #Js, Plack's constant
+    m=9.109e-31 #kg, electron mass
+    e=1.6021766208e-19 #C, electron charge
+    c=3e8 #m/s^2, speed
+
+    return h/sqrt(2*m*e*V0*(1+e*V0/(2*m*c*c)))*1e10 #return wavelength in Angstrom
+
 def readMrc(infolder, use_metadata):
     # find mrc files
     mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
@@ -72,10 +80,7 @@ def read_ext_header(fileName):
         if 'Ceta' in ext_header['camera']:
             ext_header['binning'] = 4096/ext_header['dim']
             ext_header['physicalPixel'] = 14e-6
-        if ext_header['acceleratingVoltage'] == 200e3:
-            ext_header['wavelength'] = 2.508e-12
-        elif ext_header['acceleratingVoltage'] == 300e3:
-            ext_header['wavelength'] = 1.97e-12
+        ext_header['wavelength'] = cal_wavelength(ext_header['acceleratingVoltage'])
         ext_header['cameraLength'] = (ext_header['physicalPixel']*ext_header['binning'])/(ext_header['pixelSpacing']*ext_header['wavelength'])
         #print ext_header
     
@@ -125,7 +130,7 @@ def getUserInput(argv):
         elif opt in ('-y','--cy'):
             cy = float(arg)
         elif opt in ('-k', '--HT'):
-            HT = int(arg)
+            HT = int(arg) * 1e3
         elif opt in ('-c', '--camera'):
             cameraLength = float(arg)
         elif opt in ('-a', '--osc='):
@@ -220,15 +225,13 @@ if __name__ == '__main__':
 	if not use_metadata:
 		binning = 4096/nx
 		pixelSize = 0.014*binning
-		wavelength = 0.02508   #0.0197
-		if HT == 300:
-			wavelength = 0.0197
+		wavelength = cal_wavelength(HT)
 		osc_start = 0
 		expTime = 1.0
 	else:
 		binning = meta[0]['binning']
 		pixelSize = meta[0]['physicalPixel']*1e3*binning
-		wavelength = meta[0]['wavelength']*1e10
+		wavelength = meta[0]['wavelength']
 		osc_start = round(meta[0]['alphaTilt'],1)
 		osc_range = []
 		for m in meta:
