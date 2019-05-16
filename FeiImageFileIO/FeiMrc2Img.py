@@ -81,7 +81,7 @@ def read_ext_header(fileName):
             ext_header['binning'] = 4096/ext_header['dim']
             ext_header['physicalPixel'] = 14e-6
         ext_header['wavelength'] = cal_wavelength(ext_header['acceleratingVoltage'])
-        ext_header['cameraLength'] = (ext_header['physicalPixel']*ext_header['binning'])/(ext_header['pixelSpacing']*ext_header['wavelength']*1e10)
+        ext_header['cameraLength'] = (ext_header['physicalPixel']*ext_header['binning'])/(ext_header['pixelSpacing']*ext_header['wavelength']*1e-10)
         #print ext_header
     
     return ext_header
