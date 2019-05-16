@@ -200,8 +200,8 @@ if __name__ == '__main__':
 	dark_noise = img[where(img<0)]
 	mm = sqrt(average(dark_noise*dark_noise))
 	print '\tDark nosie sigma:',mm,
-	mm = mm * 5
-	print ', 5 sigma:',mm
+	mm = min(mm * 5, abs(dark_noise.min()))
+	print ', add:', mm
 	clip(img+mm, 0, 8000, out=img)
 	
 	n, ny, nx = img.shape
