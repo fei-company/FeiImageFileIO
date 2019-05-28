@@ -186,8 +186,10 @@ def saveImg(img, file_handler, cxg, cyg, osc_start,osc_range, expTime, pixelSize
 	file_handler.write((img+0.5).astype('uint16'))
 	return
 	
-def most_common(lst):
+def most_common(a):
+    lst = [round(x - a[i - 1], 1) for i, x in enumerate(a)][1:]
     return max(set(lst), key=lst.count)
+
 
 if __name__ == '__main__':
 	infolder, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata = getUserInput(sys.argv[1:])
@@ -236,7 +238,7 @@ if __name__ == '__main__':
 		osc_range = []
 		for m in meta:
 			osc_range.append(round(m['alphaTilt'],1))
-		osc_range = most_common(list(diff(array(osc_range))))
+		osc_range = most_common(osc_range)
 		expTime = meta[0]['integrationTime']
 		cameraLength = meta[0]['cameraLength']
 	for k in range(n):
