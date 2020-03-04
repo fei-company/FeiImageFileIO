@@ -47,7 +47,10 @@ def cal_wavelength(V0):
 
 def readMrc(infolder, use_metadata):
     # find mrc files
-    mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
+    if '*.mrc' is in infolder:
+	mrcList = sorted(glob.glob(infolder))
+    else:
+	mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
 
     nz = len(mrcList)
     # read input
@@ -125,19 +128,21 @@ def getUserInput(argv):
             print inputfile
         elif opt in ("-o", "--output"):
             outputfile = arg
+            print outputfile
         elif opt in ('-x', '--cx'):
             cx = float(arg)
         elif opt in ('-y','--cy'):
             cy = float(arg)
         elif opt in ('-k', '--HT'):
             HT = int(arg) * 1e3
+            print HT
         elif opt in ('-c', '--camera'):
             cameraLength = float(arg)
         elif opt in ('-a', '--osc='):
             osc_range = float(arg)
-            gain = float(arg)
         elif opt in ('-F', '--FEI'):
             use_metadata = True
+            print use_metadata
         else:
             print opt,'unrecognized option'
 
@@ -208,9 +213,10 @@ if __name__ == '__main__':
 	mm = sqrt(average(dark_noise*dark_noise))
 	print '\tDark nosie sigma:',mm,
 	mm = min(mm * 5, abs(dark_noise.min()))
+	#mm = -img.min()
 	print ', add:', mm
-	clip(img+mm, 0, 8000, out=img)
-	
+	clip(img+mm, 0, 2**16-1, out=img)
+	#img = img + mm
 	n, ny, nx = img.shape
 
 	if cx < 0 or cy < 0:
@@ -231,14 +237,15 @@ if __name__ == '__main__':
 		osc_start = 0
 		expTime = 1.0
 	else:
-		binning = meta[0]['binning']
+		binning = meta[0]['binning'] 
 		pixelSize = meta[0]['physicalPixel']*1e3*binning
 		wavelength = meta[0]['wavelength']
 		osc_start = round(meta[0]['alphaTilt'],1)
-		osc_range = []
-		for m in meta:
-			osc_range.append(round(m['alphaTilt'],1))
-		osc_range = most_common(osc_range)
+		if osc_range <0:
+			osc_range = []
+			for m in meta:
+				osc_range.append(round(m['alphaTilt'],1))
+			osc_range = most_common(osc_range)
 		expTime = meta[0]['integrationTime']
 		cameraLength = meta[0]['cameraLength']
 	for k in range(n):
