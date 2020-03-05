@@ -47,10 +47,7 @@ def cal_wavelength(V0):
 
 def readMrc(infolder, use_metadata):
     # find mrc files
-    if '*.mrc' in infolder:
-	mrcList = sorted(glob.glob(infolder))
-    else:
-	mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
+    mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
 
     nz = len(mrcList)
     # read input
@@ -125,10 +122,10 @@ def getUserInput(argv):
             sys.exit()
         elif opt in ("-i", "--input"):
             inputfile = arg
-            print inputfile
+            print "input Mrc image folder:",inputfile
         elif opt in ("-o", "--output"):
             outputfile = arg
-            print outputfile
+            print "output SMV image pattern:",outputfile+"###.img"
         elif opt in ('-x', '--cx'):
             cx = float(arg)
         elif opt in ('-y','--cy'):
@@ -142,7 +139,7 @@ def getUserInput(argv):
             osc_range = float(arg)
         elif opt in ('-F', '--FEI'):
             use_metadata = True
-            print use_metadata
+	    print "Using Fei extended MRC header"
         else:
             print opt,'unrecognized option'
 
