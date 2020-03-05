@@ -113,7 +113,7 @@ def getUserInput(argv):
     cameraLength = -1
     osc_range = -1
     use_metadata = False
-
+	
     try:
         opts, args = getopt.getopt(argv,"hi:o:x:y:k:c:a:F",["help","input=","output=","cx=","cy=","HT=","camera=","osc=","FEI"])
     except getopt.GetoptError:
@@ -197,6 +197,9 @@ def most_common(a):
 
 
 if __name__ == '__main__':
+	if len(sys.argv)<2:
+		printHelp()
+		sys.exit(1)
 	infolder, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata = getUserInput(sys.argv[1:])
 	
 	
