@@ -47,7 +47,7 @@ def cal_wavelength(V0):
 
 def readMrc(infolder, use_metadata):
     # find mrc files
-    if '*.mrc' is in infolder:
+    if '*.mrc' in infolder:
 	mrcList = sorted(glob.glob(infolder))
     else:
 	mrcList = sorted(glob.glob("{}/*.mrc".format(infolder)))
