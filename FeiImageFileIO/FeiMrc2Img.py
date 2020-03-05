@@ -197,6 +197,10 @@ if __name__ == '__main__':
 	if len(sys.argv)<2:
 		printHelp()
 		sys.exit(1)
+	elif '*' in sys.argv[1:]:
+		print "Special character * is not supported"
+		printHelp()
+		sys.exit()
 	infolder, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata = getUserInput(sys.argv[1:])
 	
 	
