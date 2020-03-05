@@ -1,5 +1,5 @@
 # FeiImageFileIO
-Python libraries for cryoEM and TIA related image formats
+Python libraries for cryoEM and TIA related image formats. Compatible with Python 2.7
 
 ===================
 
