@@ -122,10 +122,10 @@ def getUserInput(argv):
             sys.exit()
         elif opt in ("-i", "--input"):
             inputfile = arg
-            print "input Mrc image folder:",inputfile
+            #print "input Mrc image folder:",inputfile
         elif opt in ("-o", "--output"):
             outputfile = arg
-            print "output SMV image pattern:",outputfile+"###.img"
+            #print "output SMV image pattern:",outputfile+"###.img"
         elif opt in ('-x', '--cx'):
             cx = float(arg)
         elif opt in ('-y','--cy'):
@@ -197,8 +197,8 @@ if __name__ == '__main__':
 	if len(sys.argv)<2:
 		printHelp()
 		sys.exit(1)
-	elif '*' in sys.argv[1:]:
-		print "Special character * is not supported"
+	elif len(sys.argv)>18:
+		print "Special character * or ? are not supported"
 		printHelp()
 		sys.exit()
 	infolder, outputfile, cx, cy, HT, cameraLength, osc_range, use_metadata = getUserInput(sys.argv[1:])
